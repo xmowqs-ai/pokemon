@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIDI → HEX コンバーター</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --panel: #111418;
+    --border: #1e2530;
+    --accent: #00e5ff;
+    --accent2: #ff4081;
+    --accent3: #69ff47;
+    --text: #cdd6f4;
+    --muted: #45475a;
+    --glow: 0 0 12px #00e5ff55;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  h1 {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: clamp(1.4rem, 4vw, 2.2rem);
+    color: var(--accent);
+    text-shadow: var(--glow);
+    letter-spacing: 0.15em;
+    margin-bottom: 0.3rem;
+    text-align: center;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+    margin-bottom: 2rem;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 860px;
+    margin-bottom: 1.2rem;
+    position: relative;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: linear-gradient(135deg, #00e5ff22, transparent 60%) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: destination-out;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border), transparent);
+  }
+
+  /* ドロップゾーン */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+    box-shadow: var(--glow);
+  }
+
+  .drop-zone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    filter: drop-shadow(0 0 8px #00e5ff88);
+  }
+
+  .drop-text {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .drop-text strong { color: var(--accent); }
+
+  /* トラック選択 */
+  #track-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .track-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 0.35rem 0.9rem;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .track-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .track-btn.active {
+    background: rgba(0,229,255,0.12);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: var(--glow);
+  }
+
+  /* 設定行 */
+  .settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .setting-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .setting-item label { white-space: nowrap; }
+
+  input[type=number] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    width: 80px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type=number]:focus { border-color: var(--accent); }
+
+  .computed {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--accent3);
+    font-size: 0.85rem;
+    padding: 0.2rem 0.6rem;
+    background: rgba(105,255,71,0.07);
+    border-radius: 4px;
+    border: 1px solid rgba(105,255,71,0.2);
+  }
+
+  /* 出力エリア */
+  #output-area {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.95rem;
+    line-height: 2;
+    letter-spacing: 0.12em;
+    color: var(--accent3);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem;
+    min-height: 120px;
+    word-break: break-all;
+    white-space: pre-wrap;
+    position: relative;
+  }
+
+  .byte-pair {
+    display: inline-block;
+    padding: 0 1px;
+    border-radius: 3px;
+    transition: background 0.15s;
+  }
+
+  .byte-pair:hover { background: rgba(105,255,71,0.15); }
+
+  .byte-sep { color: var(--muted); opacity: 0.4; }
+
+  .byte-header { color: var(--accent); }
+  .byte-cmd    { color: var(--accent2); }
+  .byte-note   { color: var(--accent3); }
+  .byte-end    { color: #ff4081; }
+  .byte-oct    { color: #bd93f9; }
+
+  .placeholder-msg {
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 1.5rem 0;
+  }
+
+  /* コピーボタン */
+  .copy-btn {
+    background: rgba(0,229,255,0.1);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 0.4rem 1.1rem;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    transition: all 0.2s;
+  }
+
+  .copy-btn:hover {
+    background: rgba(0,229,255,0.2);
+    box-shadow: var(--glow);
+  }
+
+  .copy-btn.copied {
+    border-color: var(--accent3);
+    color: var(--accent3);
+    background: rgba(105,255,71,0.1);
+  }
+
+  /* ステータス */
+  #status {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 0.5rem;
+    min-height: 1.2em;
+    letter-spacing: 0.05em;
+  }
+
+  #status.ok  { color: var(--accent3); }
+  #status.err { color: var(--accent2); }
+
+  /* フッター行 */
+  .output-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.7rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 0.3rem; }
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+</style>
+</head>
+<body>
+
+<h1>◈ MIDI → HEX CONVERTER</h1>
+<p class="subtitle">// MIDIファイルをカスタムHEXフォーマットに変換</p>
+
+<!-- ファイル読み込み -->
+<div class="card">
+  <div class="section-label">01 · MIDIファイル読み込み</div>
+  <div class="drop-zone" id="drop-zone">
+    <input type="file" id="file-input" accept=".mid,.midi">
+    <div class="drop-icon">🎵</div>
+    <div class="drop-text"><strong>クリックまたはドラッグ</strong>してMIDIファイルを選択</div>
+    <div class="drop-text" style="margin-top:0.3rem;font-size:0.78rem;">.mid / .midi 対応</div>
+  </div>
+  <div id="status"></div>
+</div>
+
+<!-- トラック選択 -->
+<div class="card" id="track-card" style="display:none">
+  <div class="section-label">02 · トラック選択</div>
+  <div id="track-selector"></div>
+</div>
+
+<!-- 設定 -->
+<div class="card">
+  <div class="section-label">03 · BPM設定</div>
+  <div class="settings-row">
+    <div class="setting-item">
+      <label>BPM</label>
+      <input type="number" id="bpm-input" value="120" min="1" max="999">
+    </div>
+    <div class="setting-item">
+      <label>→ 19000÷BPM =</label>
+      <span class="computed" id="bpm-computed">0062</span>
+      <span style="font-size:0.78rem;color:var(--muted);">(2バイトHEX, 切り上げ)</span>
+    </div>
+    <div class="setting-item">
+      <label>最大音符ギャップ (tick)</label>
+      <input type="number" id="gap-input" value="30" min="1" max="9999" title="これ以上のノートオフ間隔を休符とみなす">
+    </div>
+  </div>
+</div>
+
+<!-- 出力 -->
+<div class="card">
+  <div class="section-label">04 · HEX出力</div>
+  <div id="output-area"><div class="placeholder-msg">MIDIファイルを読み込んでください…</div></div>
+  <div class="output-footer">
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:var(--accent)"></span>ヘッダ</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--accent2)"></span>コマンド</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#bd93f9"></span>オクターブ変更</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--accent3)"></span>音符/休符</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#ff4081"></span>終端</div>
+    </div>
+    <button class="copy-btn" id="copy-btn">📋 コピー</button>
+  </div>
+</div>
+
+<script>
+// =====================================================
+// MIDI パーサー (SMF)
+// =====================================================
+function parseMidi(buffer) {
+  const view = new DataView(buffer);
+  let pos = 0;
+
+  function readU8()  { return view.getUint8(pos++); }
+  function readU16() { const v = view.getUint16(pos); pos += 2; return v; }
+  function readU32() { const v = view.getUint32(pos); pos += 4; return v; }
+  function readVarLen() {
+    let val = 0, b;
+    do { b = readU8(); val = (val << 7) | (b & 0x7f); } while (b & 0x80);
+    return val;
+  }
+
+  // MThd
+  if (readU32() !== 0x4d546864) throw new Error('MIDIヘッダが見つかりません');
+  readU32(); // chunk length
+  const format   = readU16();
+  const numTracks = readU16();
+  const division = readU16(); // ticks per quarter note
+
+  const tracks = [];
+
+  for (let t = 0; t < numTracks; t++) {
+    if (readU32() !== 0x4d54726b) throw new Error(`トラックヘッダ異常 (track ${t})`);
+    const chunkLen = readU32();
+    const end = pos + chunkLen;
+    const events = [];
+    let tick = 0;
+    let lastStatus = 0;
+    let trackName = `Track ${t}`;
+    let tempo = 500000; // default 120 BPM
+
+    while (pos < end) {
+      const delta = readVarLen();
+      tick += delta;
+      let status = readU8();
+
+      // running status
+      if (status < 0x80) { pos--; status = lastStatus; }
+      else { lastStatus = status; }
+
+      const type = status & 0xf0;
+      const ch   = status & 0x0f;
+
+      if (status === 0xff) {
+        // meta event
+        const metaType = readU8();
+        const metaLen  = readVarLen();
+        const metaData = new Uint8Array(buffer, pos, metaLen);
+        if (metaType === 0x51 && metaLen === 3) {
+          tempo = (metaData[0] << 16) | (metaData[1] << 8) | metaData[2];
+        }
+        if (metaType === 0x03) {
+          trackName = new TextDecoder().decode(metaData) || trackName;
+        }
+        pos += metaLen;
+        events.push({ tick, type: 'meta', metaType, data: Array.from(metaData) });
+      } else if (status === 0xf0 || status === 0xf7) {
+        // sysex
+        const len = readVarLen();
+        pos += len;
+      } else if (type === 0x90) {
+        const note = readU8(), vel = readU8();
+        events.push({ tick, type: vel > 0 ? 'noteOn' : 'noteOff', ch, note, vel });
+      } else if (type === 0x80) {
+        const note = readU8(); readU8();
+        events.push({ tick, type: 'noteOff', ch, note, vel: 0 });
+      } else if (type === 0xa0) { readU8(); readU8(); }
+      else if (type === 0xb0) { readU8(); readU8(); }
+      else if (type === 0xc0) { readU8(); }
+      else if (type === 0xd0) { readU8(); }
+      else if (type === 0xe0) { readU8(); readU8(); }
+      else { /* unknown */ }
+    }
+    pos = end;
+    tracks.push({ name: trackName, events, tempo });
+  }
+
+  return { format, numTracks, division, tracks };
+}
+
+// =====================================================
+// 変換ロジック
+// =====================================================
+const NOTE_UPPER = ['0','1','2','3','4','5','6','7','8','9','A','B'];
+const LEN_CODES = [
+  { ticks: 1,  hex: '0', name: '16分' },
+  { ticks: 2,  hex: '1', name: '8分' },
+  { ticks: 4,  hex: '3', name: '4分' },
+  { ticks: 8,  hex: '7', name: '2分' },
+  { ticks: 16, hex: 'F', name: '全音符' },
+];
+
+function midiNoteToInfo(noteNum) {
+  // C4 = 60
+  const octave = Math.floor(noteNum / 12) - 1; // scientific pitch
+  const semi   = noteNum % 12;
+  return { octave, semi, upper: NOTE_UPPER[semi] };
+}
+
+function closestLen(ticks, ppq) {
+  // normalize: 4分=ppq → 4
+  const norm = ticks / ppq * 4;
+  let best = LEN_CODES[0], bestDiff = Infinity;
+  for (const lc of LEN_CODES) {
+    const diff = Math.abs(norm - lc.ticks);
+    if (diff < bestDiff) { bestDiff = diff; best = lc; }
+  }
+  return best;
+}
+
+function convertTrack(track, division, bpmOverride, gapTick) {
+  const ppq = division; // ticks per quarter
+
+  // ノートオン/オフを対応付けてノートリストを作る
+  const notes = []; // { startTick, endTick, note }
+  const active = {}; // note -> startTick
+
+  for (const ev of track.events) {
+    if (ev.type === 'noteOn')  { active[ev.note] = ev.tick; }
+    if (ev.type === 'noteOff') {
+      if (active[ev.note] !== undefined) {
+        notes.push({ startTick: active[ev.note], endTick: ev.tick, note: ev.note });
+        delete active[ev.note];
+      }
+    }
+  }
+  // 未終了分
+  for (const [n, st] of Object.entries(active)) {
+    notes.push({ startTick: st, endTick: st + ppq, note: +n });
+  }
+  notes.sort((a, b) => a.startTick - b.startTick);
+
+  if (notes.length === 0) return null;
+
+  const bytes = []; // { hex, cls }
+
+  // BPM計算
+  const bpm = bpmOverride;
+  const bpmHexVal = Math.ceil(19000 / bpm);
+  const bpmHex = bpmHexVal.toString(16).toUpperCase().padStart(4, '0');
+
+  // ヘッダ
+  bytes.push({ hex: 'ED', cls: 'byte-header' });
+  bytes.push({ hex: bpmHex.slice(0, 2), cls: 'byte-header' });
+  bytes.push({ hex: bpmHex.slice(2, 4), cls: 'byte-header' });
+  bytes.push({ hex: 'DC', cls: 'byte-cmd' });
+  bytes.push({ hex: 'D2', cls: 'byte-cmd' });
+
+  let currentOctave = null;
+  let cursor = notes[0].startTick;
+
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+
+    // 前の音との隙間 → 休符
+    const gap = n.startTick - cursor;
+    if (gap > gapTick) {
+      const restLen = closestLen(gap, ppq);
+      bytes.push({ hex: 'C' + restLen.hex, cls: 'byte-note' });
+    }
+
+    const info = midiNoteToInfo(n.note);
+    const oct  = info.octave; // 0=C-1, 4=C4...
+
+    // オクターブ変更 (E0~E8, 値大=低い → oct高いほどE小)
+    // E4 = octave4 (デフォルト中央), 値大=低い
+    // マッピング: octave 0→E8, 1→E7, ... 8→E0
+    // ただし仕様では「変えるまで引き継ぐ」なので変化時のみ挿入
+    const eCode = Math.max(0, Math.min(8, 8 - oct));
+    if (currentOctave !== oct) {
+      bytes.push({ hex: 'E' + eCode.toString(16).toUpperCase(), cls: 'byte-oct' });
+      currentOctave = oct;
+    }
+
+    // 音符長
+    const dur = n.endTick - n.startTick;
+    const lenCode = closestLen(dur, ppq);
+    bytes.push({ hex: info.upper + lenCode.hex, cls: 'byte-note' });
+
+    cursor = n.endTick;
+  }
+
+  bytes.push({ hex: 'FF', cls: 'byte-end' });
+  return bytes;
+}
+
+// =====================================================
+// UI
+// =====================================================
+let midiData = null;
+let selectedTrack = 0;
+
+const fileInput   = document.getElementById('file-input');
+const dropZone    = document.getElementById('drop-zone');
+const trackCard   = document.getElementById('track-card');
+const trackSel    = document.getElementById('track-selector');
+const bpmInput    = document.getElementById('bpm-input');
+const bpmComputed = document.getElementById('bpm-computed');
+const gapInput    = document.getElementById('gap-input');
+const outputArea  = document.getElementById('output-area');
+const statusEl    = document.getElementById('status');
+const copyBtn     = document.getElementById('copy-btn');
+
+function setStatus(msg, cls='') {
+  statusEl.textContent = msg;
+  statusEl.className = cls;
+}
+
+function updateBpmComputed() {
+  const bpm = parseFloat(bpmInput.value) || 120;
+  const val = Math.ceil(19000 / bpm);
+  bpmComputed.textContent = val.toString(16).toUpperCase().padStart(4, '0');
+}
+bpmInput.addEventListener('input', () => { updateBpmComputed(); render(); });
+gapInput.addEventListener('input', render);
+updateBpmComputed();
+
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      midiData = parseMidi(e.target.result);
+      buildTrackButtons();
+      render();
+      setStatus(`✓ ${file.name} 読み込み完了 (${midiData.numTracks}トラック)`, 'ok');
+    } catch(err) {
+      setStatus('✗ ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function buildTrackButtons() {
+  trackCard.style.display = '';
+  trackSel.innerHTML = '';
+  // トラックごとにノートがあるものだけ表示
+  midiData.tracks.forEach((t, i) => {
+    const hasNotes = t.events.some(e => e.type === 'noteOn');
+    if (!hasNotes) return;
+    const btn = document.createElement('button');
+    btn.className = 'track-btn' + (i === selectedTrack ? ' active' : '');
+    btn.textContent = `Track ${i}: ${t.name}`;
+    btn.dataset.idx = i;
+    btn.addEventListener('click', () => {
+      selectedTrack = i;
+      document.querySelectorAll('.track-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      render();
+    });
+    trackSel.appendChild(btn);
+  });
+  // デフォルトは最初のノート有りトラック
+  const firstBtn = trackSel.querySelector('.track-btn');
+  if (firstBtn) {
+    selectedTrack = +firstBtn.dataset.idx;
+    firstBtn.classList.add('active');
+  }
+}
+
+function render() {
+  if (!midiData) return;
+  const bpm  = parseFloat(bpmInput.value) || 120;
+  const gap  = parseInt(gapInput.value) || 30;
+  const track = midiData.tracks[selectedTrack];
+  if (!track) { outputArea.innerHTML = '<div class="placeholder-msg">トラックなし</div>'; return; }
+
+  const bytes = convertTrack(track, midiData.division, bpm, gap);
+  if (!bytes) { outputArea.innerHTML = '<div class="placeholder-msg">このトラックにノートがありません</div>'; return; }
+
+  outputArea.innerHTML = bytes.map((b, i) =>
+    `<span class="byte-pair ${b.cls}" title="${i}">${b.hex}</span>${i < bytes.length-1 ? '<span class="byte-sep"> </span>' : ''}`
+  ).join('');
+}
+
+function getRawText() {
+  if (!midiData) return '';
+  const bpm  = parseFloat(bpmInput.value) || 120;
+  const gap  = parseInt(gapInput.value) || 30;
+  const track = midiData.tracks[selectedTrack];
+  if (!track) return '';
+  const bytes = convertTrack(track, midiData.division, bpm, gap);
+  if (!bytes) return '';
+  return bytes.map(b => b.hex).join(' ');
+}
+
+copyBtn.addEventListener('click', () => {
+  const text = getRawText();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    copyBtn.textContent = '✓ コピー完了';
+    copyBtn.classList.add('copied');
+    setTimeout(() => { copyBtn.textContent = '📋 コピー'; copyBtn.classList.remove('copied'); }, 1800);
+  });
+});
+
+// ドラッグ&ドロップ
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
+</script>
+</body>
+</html>
